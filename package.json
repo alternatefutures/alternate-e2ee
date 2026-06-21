@@ -1,6 +1,6 @@
 {
   "name": "@alternatefutures/e2ee",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Framework-agnostic end-to-end-encryption core (Argon2id room derivation, AES-256-GCM, Ed25519 TOFU) shared across AlternateFutures clients.",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -10,16 +10,34 @@
   },
   "exports": {
     ".": {
-      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./wordlist": {
-      "import": { "types": "./dist/wordlist.d.ts", "default": "./dist/wordlist.js" },
-      "require": { "types": "./dist/wordlist.d.cts", "default": "./dist/wordlist.cjs" }
+      "import": {
+        "types": "./dist/wordlist.d.ts",
+        "default": "./dist/wordlist.js"
+      },
+      "require": {
+        "types": "./dist/wordlist.d.cts",
+        "default": "./dist/wordlist.cjs"
+      }
     },
     "./node": {
-      "import": { "types": "./dist/node.d.ts", "default": "./dist/node.js" },
-      "require": { "types": "./dist/node.d.cts", "default": "./dist/node.cjs" }
+      "import": {
+        "types": "./dist/node.d.ts",
+        "default": "./dist/node.js"
+      },
+      "require": {
+        "types": "./dist/node.d.cts",
+        "default": "./dist/node.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
