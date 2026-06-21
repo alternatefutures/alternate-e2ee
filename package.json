@@ -10,20 +10,18 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
     },
     "./wordlist": {
-      "types": "./dist/wordlist.d.ts",
-      "import": "./dist/wordlist.js",
-      "require": "./dist/wordlist.cjs"
+      "import": { "types": "./dist/wordlist.d.ts", "default": "./dist/wordlist.js" },
+      "require": { "types": "./dist/wordlist.d.cts", "default": "./dist/wordlist.cjs" }
     },
     "./node": {
-      "types": "./dist/node.d.ts",
-      "import": "./dist/node.js",
-      "require": "./dist/node.cjs"
-    }
+      "import": { "types": "./dist/node.d.ts", "default": "./dist/node.js" },
+      "require": { "types": "./dist/node.d.cts", "default": "./dist/node.cjs" }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
