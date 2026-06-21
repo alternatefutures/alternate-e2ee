@@ -1,6 +1,6 @@
 {
   "name": "@alternatefutures/e2ee",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Framework-agnostic end-to-end-encryption core (Argon2id room derivation, AES-256-GCM, Ed25519 TOFU) shared across AlternateFutures clients.",
   "license": "AGPL-3.0-only",
   "type": "module",
