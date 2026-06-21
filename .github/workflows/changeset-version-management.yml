@@ -1,0 +1,58 @@
+name: 🪡 Changeset (Version Management)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  changeset_handler:
+    name: Changeset handler
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Changeset status
+        id: changeset-status
+        shell: bash
+        run: |
+          pending=$(find .changeset -type f -name "*.md" ! -name "README.md")
+          if [ -n "$pending" ]; then
+            echo "✅ Changeset(s) found:"; echo "$pending"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚠️ No pending changesets — skipping version bump."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: ${{ steps.changeset-status.outputs.skip != 'true' }}
+        run: npm ci
+
+      - name: Apply version bump
+        if: ${{ steps.changeset-status.outputs.skip != 'true' }}
+        run: |
+          npm run changeset:version
+          git status --short
+
+      - name: Commit + push version
+        if: ${{ steps.changeset-status.outputs.skip != 'true' }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          v=$(node -p "require('./package.json').version")
+          git commit --allow-empty --no-verify -m "[skip ci] 🦖 version $v"
+          git push
