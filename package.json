@@ -1,0 +1,55 @@
+{
+  "name": "@alternatefutures/e2ee",
+  "version": "0.0.0",
+  "description": "Framework-agnostic end-to-end-encryption core (Argon2id room derivation, AES-256-GCM, Ed25519 TOFU) shared across AlternateFutures clients.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": true,
+  "engines": {
+    "node": ">=18.18.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./wordlist": {
+      "types": "./dist/wordlist.d.ts",
+      "import": "./dist/wordlist.js",
+      "require": "./dist/wordlist.cjs"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "require": "./dist/node.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "hash-wasm": "^4.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "tsup": "^8.3.5",
+    "typescript": "~5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alternatefutures/alternate-e2ee.git"
+  }
+}
