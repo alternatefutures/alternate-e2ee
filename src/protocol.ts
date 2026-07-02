@@ -51,6 +51,12 @@ ed.etc.sha512Async = async (...m: Uint8Array[]) =>
 
 // ── Protocol constants ──────────────────────────────────────────────────────
 export const PROTOCOL_VERSION = 2
+/** Envelope `v` values this build knows how to open. Only the current version is
+ *  live (v1 rooms are intentionally invalidated). A future wire-compatible bump
+ *  adds its number here in the same commit that bumps PROTOCOL_VERSION. Used by
+ *  openMessage to fail fast + legibly on an unsupported version instead of
+ *  falling through to an opaque AES-GCM/signature error. */
+export const SUPPORTED_VERSIONS: ReadonlySet<number> = new Set([PROTOCOL_VERSION])
 export const KDF = 'argon2id' as const
 // OWASP "first recommended" Argon2id config: 19 MiB, t=2, p=1 → ~32B key.
 export const ARGON2_PARAMS = { memorySize: 19_456, iterations: 2, parallelism: 1, hashLength: 32 }
@@ -59,6 +65,15 @@ export const PBKDF2_ITERATIONS = 600_000
 // Fixed KDF salt — the passphrase alone selects the room (no room name). Public
 // by design (a salt isn't secret); domain-separates this app's key derivation.
 export const ROOM_SALT = 'alt-chat/room/v2'
+/** Per-app KDF salts. Each app MUST use a distinct salt so a passphrase reused
+ *  across apps derives DIFFERENT keys/room ids (no cross-app collision). This is
+ *  the single source of truth — consumers import from here instead of hardcoding
+ *  the literal, so any future rename is a compile-time break, not silent runtime
+ *  divergence. Invariant: all values are pairwise distinct (see protocol tests). */
+export const APP_SALTS = {
+  chat: ROOM_SALT, // 'alt-chat/room/v2'
+  connect: 'alternate-connect/meet/v1',
+} as const
 // Fixed padding buckets (bytes) for the *plaintext* before encryption.
 const PAD_BUCKETS = [256, 1024, 4096, 16_384]
 const DOMAIN = new TextEncoder().encode('alt-chat/v1')
@@ -360,6 +375,15 @@ export async function openMessage(
   env: Envelope,
   myPubB64: string,
 ): Promise<DecryptedMessage> {
+  // Version gate FIRST: reject unsupported envelope versions before any crypto so
+  // a mismatched/downgraded/forged `v` fails with a clear, distinct error rather
+  // than an opaque AES-GCM/signature failure (which would mask a downgrade attempt
+  // as ordinary corruption). `v` feeds buildAad/buildSigned, so this also prevents
+  // an attacker steering AAD/signed-bytes construction via an out-of-range version.
+  if (!SUPPORTED_VERSIONS.has(env.v)) {
+    throw new Error(`unsupported protocol version: ${env.v}`)
+  }
+
   const pub = fromB64(env.pubkey)
   const iv = fromB64(env.iv)
   const ct = fromB64(env.ciphertext)
