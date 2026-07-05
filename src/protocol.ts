@@ -210,15 +210,25 @@ export async function deriveRoomKeyPbkdf2(password: string): Promise<CryptoKey> 
 }
 
 // ── Identity (Ed25519, TOFU) ──────────────────────────────────────────────────
-// The protocol layer is storage-agnostic: it only knows how to turn a raw 32-byte
-// private key into a full identity. WHERE that key is persisted is an
-// environment concern — the browser uses localStorage, the CLI a 0600 file — so
-// each environment stores only the private key and rebuilds the rest here. That
-// keeps the public key, fingerprint, and therefore every signature identical
-// across environments for the same key.
+// The protocol layer is storage-agnostic: it only knows how to turn signing
+// material into a full identity. WHERE that material is persisted is an
+// environment concern — the CLI uses a 0600 file (raw bytes), browsers should
+// use a NON-EXTRACTABLE WebCrypto key in IndexedDB — so each environment stores
+// only the signing material and rebuilds the rest here. That keeps the public
+// key, fingerprint, and therefore every signature identical across environments
+// for the same key (Ed25519 is deterministic per RFC 8032: the raw-bytes path
+// and the WebCrypto path emit byte-identical signatures for the same key+bytes).
 
 export type Identity = {
-  priv: Uint8Array
+  /** Raw 32-byte private key — the extractable path (CLI 0600 file, legacy
+   *  browser localStorage). Absent when the identity is WebCrypto-backed. */
+  priv?: Uint8Array
+  /** WebCrypto Ed25519 private key — create it NON-EXTRACTABLE in the browser:
+   *  same-origin script (i.e. XSS) can then still *use* the key to sign, but can
+   *  never READ the key material, so the identity cannot be exfiltrated and
+   *  impersonation ends when the injected code stops running. Absent on the
+   *  raw-bytes path. Exactly one of `priv`/`signKey` should be set. */
+  signKey?: CryptoKey
   pub: Uint8Array
   pubB64: string
   fingerprint: string // short hex of SHA-256(pub), grouped for display
@@ -233,6 +243,82 @@ export function randomPrivateKey(): Uint8Array {
 export async function identityFromPrivateKey(priv: Uint8Array): Promise<Identity> {
   const pub = await ed.getPublicKeyAsync(priv)
   return { priv, pub, pubB64: toB64(pub), fingerprint: await fingerprintOf(pub) }
+}
+
+/** True when this runtime's WebCrypto can generate + sign with Ed25519 keys
+ *  (Chrome 137+, Safari 17+, Firefox 129+, Node ≥19, Bun). Apps gate the
+ *  non-extractable keystore on this and fall back to the raw-bytes path where
+ *  it's missing — the two paths interoperate freely on the wire. */
+export async function supportsWebCryptoEd25519(): Promise<boolean> {
+  try {
+    const pair = (await crypto.subtle.generateKey('Ed25519', false, [
+      'sign',
+      'verify',
+    ])) as CryptoKeyPair
+    await crypto.subtle.sign('Ed25519', pair.privateKey, new Uint8Array(1))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Generate a fresh identity whose private key is a NON-EXTRACTABLE WebCrypto
+ *  key. Persist `identity.signKey` (a CryptoKey is structured-cloneable, so it
+ *  stores directly in IndexedDB) plus `identity.pub`, and rebuild on load with
+ *  `identityFromSignKey`. The key material itself never exists in JS memory. */
+export async function generateNonExtractableIdentity(): Promise<Identity> {
+  const pair = (await crypto.subtle.generateKey('Ed25519', false, [
+    'sign',
+    'verify',
+  ])) as CryptoKeyPair
+  const pub = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey))
+  return { signKey: pair.privateKey, pub, pubB64: toB64(pub), fingerprint: await fingerprintOf(pub) }
+}
+
+/** Rebuild a full identity from a persisted WebCrypto private key + raw public
+ *  key bytes — the IndexedDB reload path. */
+export async function identityFromSignKey(signKey: CryptoKey, pub: Uint8Array): Promise<Identity> {
+  return { signKey, pub, pubB64: toB64(pub), fingerprint: await fingerprintOf(pub) }
+}
+
+// PKCS#8 wrapper for a raw Ed25519 seed (RFC 5958 outer structure, RFC 8410
+// OID 1.3.101.112): a fixed 16-byte header followed by the 32-byte seed. This
+// is the only import format WebCrypto accepts for Ed25519 private keys ('raw'
+// import exists for PUBLIC keys only).
+const PKCS8_ED25519_PREFIX = Uint8Array.from([
+  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+])
+
+/** Import an EXISTING raw private key as a (default non-extractable) WebCrypto
+ *  signing key — the localStorage → IndexedDB migration path. Same key bytes →
+ *  same public key, fingerprint, and signatures, so peers see no change; after
+ *  persisting the returned `signKey`, DELETE the raw-bytes copy. */
+export async function importPrivateKeyAsSignKey(
+  priv: Uint8Array,
+  opts: { extractable?: boolean } = {},
+): Promise<Identity> {
+  const signKey = await crypto.subtle.importKey(
+    'pkcs8',
+    concat(PKCS8_ED25519_PREFIX, priv) as BufferSource,
+    'Ed25519',
+    opts.extractable ?? false,
+    ['sign'],
+  )
+  const pub = await ed.getPublicKeyAsync(priv)
+  return { signKey, pub, pubB64: toB64(pub), fingerprint: await fingerprintOf(pub) }
+}
+
+/** Sign with whichever material the identity carries. Both paths produce the
+ *  SAME bytes for the same key+message (RFC 8032 deterministic signatures), so
+ *  mixed rooms (CLI raw-bytes ↔ browser WebCrypto) verify seamlessly. */
+async function signWithIdentity(identity: Identity, bytes: Uint8Array): Promise<Uint8Array> {
+  if (identity.signKey) {
+    return new Uint8Array(
+      await crypto.subtle.sign('Ed25519', identity.signKey, bytes as BufferSource),
+    )
+  }
+  if (identity.priv) return ed.signAsync(bytes, identity.priv)
+  throw new Error('identity has no signing material (neither signKey nor priv)')
 }
 
 /** Human-comparable short fingerprint, e.g. "a1b2 c3d4 e5f6". */
@@ -350,7 +436,7 @@ export async function sealMessage(
     padded,
   )
   const ct = new Uint8Array(ctBuf)
-  const sig = await ed.signAsync(buildSigned(v, room, epoch, seq, iv, ct), identity.priv)
+  const sig = await signWithIdentity(identity, buildSigned(v, room, epoch, seq, iv, ct))
   return {
     v,
     room,
@@ -467,7 +553,7 @@ export async function sealPresence(
     padded,
   )
   const ct = new Uint8Array(ctBuf)
-  const sig = await ed.signAsync(presenceSigned(room, iv, ct), identity.priv)
+  const sig = await signWithIdentity(identity, presenceSigned(room, iv, ct))
   return {
     pubkey: identity.pubB64,
     sender: identity.fingerprint,

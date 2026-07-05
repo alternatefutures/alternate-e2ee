@@ -1,5 +1,30 @@
 # @alternatefutures/e2ee
 
+## 0.3.0
+
+### Minor Changes
+
+- Non-extractable WebCrypto Ed25519 identities (XSS key-theft hardening), wire-compatible with the raw-bytes path:
+
+  - `Identity` now carries EITHER `priv` (raw 32-byte key — CLI 0600 file, legacy
+    localStorage) OR `signKey` (a WebCrypto `CryptoKey`, intended to be created
+    **non-extractable** and persisted in IndexedDB). `sealMessage`/`sealPresence`
+    sign with whichever is present; Ed25519 is deterministic (RFC 8032), so both
+    paths emit byte-identical signatures for the same key — mixed rooms
+    (CLI raw-bytes ↔ hardened browser) interoperate with no wire change and no
+    `PROTOCOL_VERSION` bump.
+  - New: `generateNonExtractableIdentity()` (fresh non-extractable keypair),
+    `importPrivateKeyAsSignKey(priv)` (migrate an EXISTING localStorage key to a
+    non-extractable CryptoKey — same pub/fingerprint/signatures, then delete the
+    raw copy), `identityFromSignKey(signKey, pub)` (IndexedDB reload path), and
+    `supportsWebCryptoEd25519()` (capability gate; fall back to the raw path on
+    runtimes without WebCrypto Ed25519 — pre-137 Chrome etc.).
+  - Type note: `Identity.priv` is now optional. Consumers that READ `.priv`
+    directly (there should be none outside identity persistence) must
+    null-check.
+  - Dependencies pinned exact (`@noble/ed25519@2.3.0`, `hash-wasm@4.12.0`) —
+    supply-chain pinning at the source so consumers inherit exact versions.
+
 ## 0.2.0
 
 ### Minor Changes
