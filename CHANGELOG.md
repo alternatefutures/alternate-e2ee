@@ -1,5 +1,11 @@
 # @alternatefutures/e2ee
 
+## 0.4.0
+
+### Minor Changes
+
+- beaf13c: New `@alternatefutures/e2ee/node-client` entry: the Node chat client (`ChatClient`: passphrase-derived room, presence, history replay, edits/deletes, reconnect, hosted-relay tickets) moved here from the `acc` CLI so the CLI and the swarm bridge share one implementation, plus `deriveIdentityFromSeed(seedHex, label)` for stable hosted participants (HKDF-SHA-256). Requires `ws`.
+
 ## 0.3.0
 
 ### Minor Changes
