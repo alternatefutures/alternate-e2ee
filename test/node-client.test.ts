@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import WebSocket from 'ws'
 import { ChatClient, deriveIdentityFromSeed } from '../src/node-client'
-import { identityFromPrivateKey } from '../src/protocol'
+import { deriveRoom, identityFromPrivateKey, openPresence, type PresenceEntry } from '../src/protocol'
 
 const SEED = 'ab'.repeat(32)
 
@@ -44,5 +45,33 @@ describe('ChatClient (no network)', () => {
     expect(client.roomLabel).toMatch(/^[a-z]+-[a-z]+$/)
     expect(client.myPubkey).toBe(identity.pubB64)
     expect(client.members).toEqual([])
+  })
+
+  it('sends an ephemeral typing frame peers can open, and nothing without an open socket', async () => {
+    const identity = await deriveIdentityFromSeed(SEED, 'loco')
+    const client = new ChatClient({
+      wsUrl: 'wss://relay.invalid/ws',
+      password: 'acid acorn acre acid acorn acre',
+      username: 'loco',
+      identity,
+    })
+    expect(await client.typing(true)).toBe(false)
+    await client.ensureRoom()
+    const sent: string[] = []
+    ;(client as unknown as { ws: unknown }).ws = {
+      readyState: WebSocket.OPEN,
+      send: (frame: string) => sent.push(frame),
+    }
+    expect(await client.typing(true)).toBe(true)
+    expect(await client.typing(false)).toBe(true)
+    expect(sent).toHaveLength(2)
+    const frame = JSON.parse(sent[0]) as Record<string, unknown>
+    expect(frame).toMatchObject({ t: 'typing', room: client.roomId, active: true, pubkey: identity.pubB64 })
+    expect(JSON.parse(sent[1])).toMatchObject({ t: 'typing', active: false })
+    // The relay forwards the opaque entry; a member with the room key recovers who.
+    const room = await deriveRoom('acid acorn acre acid acorn acre')
+    const who = await openPresence(room.key, client.roomId, frame as unknown as PresenceEntry)
+    expect(who.username).toBe('loco')
+    expect(JSON.stringify(frame)).not.toContain('loco')
   })
 })

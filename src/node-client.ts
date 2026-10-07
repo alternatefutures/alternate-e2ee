@@ -384,6 +384,23 @@ export class ChatClient extends EventEmitter {
       });
   }
 
+  /**
+   * Ephemeral "is typing" signal: the same encrypted + signed presence entry
+   * as `hello`, relayed to the other members and never stored. Peers decay it
+   * after a few seconds, so a long-running sender (a bot answering) repeats
+   * `true` and sends `false` right before its message. Resolves true when a
+   * frame was written to an open, keyed socket.
+   */
+  async typing(active: boolean): Promise<boolean> {
+    const sock = this.ws;
+    const key = this.key;
+    if (!sock || sock.readyState !== WebSocket.OPEN || !key) return false;
+    const entry = await sealPresence(key, this.opts.identity, this.rid, this.opts.username);
+    if (sock.readyState !== WebSocket.OPEN) return false;
+    sock.send(JSON.stringify({ t: 'typing', room: this.rid, active, ...entry }));
+    return true;
+  }
+
   private handleFrame(frame: Record<string, unknown>): void {
     switch (frame.t) {
       case 'history':
